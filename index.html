@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#3498db">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Plantas IA">
+    <title>Diagnóstico de Plantas</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+            background-color: #f5f5f5;
+            padding: 10px;
+        }
+
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            padding: 15px 0;
+            font-size: 1.5em;
+        }
+
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .upload-box {
+            border: 2px dashed #3498db;
+            padding: 30px;
+            text-align: center;
+            border-radius: 5px;
+            margin: 15px 0;
+            cursor: pointer;
+            background: #f8f9fa;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .upload-box:active {
+            background: #e9ecef;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            width: calc(50% - 10px);
+            -webkit-appearance: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        button:active {
+            background: #2980b9;
+        }
+
+        button:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+        }
+
+        .btn-container {
+            display: flex;
+            gap: 10px;
+        }
+
+        #preview {
+            max-width: 100%;
+            max-height: 300px;
+            display: none;
+            margin: 15px auto;
+            border-radius: 5px;
+        }
+
+        .resultado {
+            margin-top: 20px;
+            padding: 15px;
+            background: #ecf0f1;
+            border-radius: 5px;
+            display: none;
+        }
+
+        .resultado h3 {
+            color: #2c3e50;
+            margin-top: 0;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+
+        .loading {
+            text-align: center;
+            display: none;
+            padding: 20px;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #e74c3c;
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            display: none;
+            margin: 10px 0;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .info {
+            background: #3498db;
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🌱 Diagnóstico de Plantas</h1>
+    
+    <div class="container">
+        <p style="margin-bottom: 15px;">Sube una foto de tu planta para obtener un diagnóstico.</p>
+        
+        <div class="upload-box" id="uploadBox">
+            <p style="font-size: 2em; margin-bottom: 10px;">📷</p>
+            <p>Toca para subir imagen</p>
+        </div>
+        
+        <input type="file" id="fileInput" accept="image/*" capture="environment">
+        
+        <img id="preview" alt="Vista previa">
+        
+        <div class="btn-container">
+            <button id="analyzeBtn" disabled>Analizar</button>
+            <button id="clearBtn">Limpiar</button>
+        </div>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Analizando...</p>
+        </div>
+        
+        <div class="error" id="error"></div>
+        
+        <div class="resultado" id="resultado">
+            <h3>Diagnóstico:</h3>
+            <p id="diagnostico"></p>
+            
+            <h3>Tratamiento:</h3>
+            <p id="tratamiento"></p>
+        </div>
+    </div>
+
+    <script>
+        const API_KEY = 'AIzaSyD007ze7IecPeQORO8tHsir96r7ToKZo5A';
+        let imagenBase64 = null;
+
+        // Detectar iOS
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+        document.getElementById('uploadBox').addEventListener('click', function() {
+            document.getElementById('fileInput').click();
+        });
+
+        document.getElementById('clearBtn').addEventListener('click', function() {
+            location.reload();
+        });
+
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                // Verificar tamaño
+                if (file.size > 10 * 1024 * 1024) {
+                    showError('La imagen es muy grande. Por favor usa una imagen menor a 10MB.');
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    imagenBase64 = event.target.result;
+                    
+                    // Mostrar preview
+                    const preview = document.getElementById('preview');
+                    preview.src = imagenBase64;
+                    preview.style.display = 'block';
+                    
+                    document.getElementById('analyzeBtn').disabled = false;
+                    document.getElementById('error').style.display = 'none';
+                };
+                
+                reader.onerror = function() {
+                    showError('Error al cargar la imagen. Inténtalo de nuevo.');
+                };
+                
+                reader.readAsDataURL(file);
+            }
+        });
+
+        document.getElementById('analyzeBtn').addEventListener('click', async function() {
+            if (!imagenBase64) {
+                showError('Por favor selecciona una imagen primero');
+                return;
+            }
+
+            const loadingDiv = document.getElementById('loading');
+            const resultadoDiv = document.getElementById('resultado');
+            const errorDiv = document.getElementById('error');
+            const analyzeButton = this;
+
+            loadingDiv.style.display = 'block';
+            resultadoDiv.style.display = 'none';
+            errorDiv.style.display = 'none';
+            analyzeButton.disabled = true;
+
+            try {
+                const base64 = imagenBase64.split(',')[1];
+
+                const requestBody = {
+                    contents: [{
+                        parts: [
+                            {
+                                text: 'Analiza esta planta brevemente en español:\n\nDIAGNÓSTICO (máximo 60 palabras):\n- Nombre de la planta\n- Problema principal\n\nTRATAMIENTO (máximo 60 palabras):\n- Producto específico con dosis\n- Frecuencia de aplicación\n\nSé muy directo y conciso.'
+                            },
+                            {
+                                inline_data: {
+                                    mime_type: 'image/jpeg',
+                                    data: base64
+                                }
+                            }
+                        ]
+                    }]
+                };
+
+                console.log('Enviando solicitud a la API...');
+
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos timeout
+
+                const response = await fetch(
+                    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + API_KEY,
+                    {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(requestBody),
+                        signal: controller.signal,
+                        mode: 'cors'
+                    }
+                );
+
+                clearTimeout(timeoutId);
+
+                console.log('Respuesta recibida, status:', response.status);
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Error de la API:', errorText);
+                    throw new Error(`Error ${response.status}: No se pudo conectar con el servidor. Verifica tu conexión a internet.`);
+                }
+
+                const data = await response.json();
+                console.log('Datos procesados:', data);
+                
+                if (data.candidates && data.candidates[0]?.content?.parts?.[0]?.text) {
+                    const texto = data.candidates[0].content.parts[0].text;
+                    
+                    const diagnosticoMatch = texto.match(/DIAGNÓSTICO[\s\S]*?(?=TRATAMIENTO|$)/i);
+                    const tratamientoMatch = texto.match(/TRATAMIENTO[\s\S]*/i);
+
+                    const diagnosticoText = diagnosticoMatch 
+                        ? diagnosticoMatch[0].replace(/DIAGNÓSTICO:?\s*/i, '').trim()
+                        : texto.substring(0, texto.length / 2).trim();
+
+                    const tratamientoText = tratamientoMatch 
+                        ? tratamientoMatch[0].replace(/TRATAMIENTO:?\s*/i, '').trim()
+                        : texto.substring(texto.length / 2).trim();
+
+                    document.getElementById('diagnostico').textContent = diagnosticoText;
+                    document.getElementById('tratamiento').textContent = tratamientoText;
+
+                    resultadoDiv.style.display = 'block';
+                } else {
+                    throw new Error('No se pudo procesar la respuesta de la IA');
+                }
+
+            } catch (error) {
+                console.error('Error completo:', error);
+                
+                let errorMessage = 'Error: ';
+                
+                if (error.name === 'AbortError') {
+                    errorMessage += 'La solicitud tardó mucho tiempo. Verifica tu conexión a internet e inténtalo de nuevo.';
+                } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                    errorMessage += 'No se puede conectar al servidor. Por favor:\n\n';
+                    errorMessage += '1. Verifica que tengas conexión a internet\n';
+                    errorMessage += '2. Si estás en WiFi, intenta cambiar a datos móviles o viceversa\n';
+                    errorMessage += '3. Recarga la página completamente';
+                } else {
+                    errorMessage += error.message;
+                }
+                
+                showError(errorMessage);
+            } finally {
+                loadingDiv.style.display = 'none';
+                analyzeButton.disabled = false;
+            }
+        });
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.innerHTML = message.replace(/\n/g, '<br>');
+            errorDiv.style.display = 'block';
+        }
+
+        // Detectar si está instalado como PWA
+        window.addEventListener('load', function() {
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches 
+                || window.navigator.standalone 
+                || document.referrer.includes('android-app://');
+            
+            if (isStandalone) {
+                console.log('App instalada como PWA');
+            }
+        });
+    </script>
+</body>
+</html>
